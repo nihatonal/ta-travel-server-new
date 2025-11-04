@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import adminRoutes from './routes/admin.js';
 import reviewRoutes from './routes/reviews.js';
 import newsletterRoutes from './routes/newsletter.js';
-import analyticsRouter from "./routes/analytics.js";
 import formsRoutes from './routes/forms.js'
 dotenv.config();
 const app = express();
