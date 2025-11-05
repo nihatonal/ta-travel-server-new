@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 import adminRoutes from './routes/admin.js';
 import reviewRoutes from './routes/reviews.js';
 import newsletterRoutes from './routes/newsletter.js';
-import formsRoutes from './routes/forms.js'
+import formsRoutes from './routes/forms.js';
+import analyticsRouter from "./routes/analytics.js";
 dotenv.config();
 const app = express();
 const PROJECT_URL = process.env.PROJECT_URL;
@@ -51,6 +52,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/forms', formsRoutes);
+app.use("/api/analytics", analyticsRouter);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
