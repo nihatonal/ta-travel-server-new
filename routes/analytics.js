@@ -1,6 +1,6 @@
 import express from "express";
 import { google } from "googleapis";
-
+import "dotenv/config";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
 const router = express.Router();
 
@@ -8,8 +8,15 @@ const router = express.Router();
 //const KEY_FILE_PATH = "./service-account.json"; // JSON dosyan burada olmalı
 const PROPERTY_ID = "511345803"; // kendi GA4 mülk ID’ni buraya yaz
 const SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"];
+const googleCredentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+
+googleCredentials.private_key = googleCredentials.private_key.replace(/\\n/g, "\n");
+
 const analyticsDataClient = new BetaAnalyticsDataClient({
-    keyFilename: "/etc/secrets/GA_KEY.json",
+    credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: process.env.GOOGLE_PRIVATE_KEY,
+    },
 });
 
 
