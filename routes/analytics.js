@@ -8,14 +8,15 @@ const router = express.Router();
 //const KEY_FILE_PATH = "./service-account.json"; // JSON dosyan burada olmalı
 const PROPERTY_ID = "511345803"; // kendi GA4 mülk ID’ni buraya yaz
 const SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"];
+
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+
 const analyticsDataClient = new BetaAnalyticsDataClient({
     credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        client_email: credentials.client_email,
+        private_key: credentials.private_key.replace(/\\n/g, '\n'),
     },
 });
-
-
 
 
 // 🧩 1️⃣ Overview (Ziyaretçi, Görüntülenme, Oturum Süresi, Bounce Rate)
