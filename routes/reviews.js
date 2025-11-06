@@ -56,9 +56,7 @@ router.get("/check-token", async (req, res) => {
 
 // ✅ Müşteri yorum gönderimi
 router.post("/submit-review", upload.single("image"), async (req, res) => {
-    const { token, name, location, date, rating, comment } = req.body;
-    const image = req.file ? req.file.filename : null;
-    console.log(req.body)
+    const { token, name, location, date, rating, comment, imageUrl } = req.body;
     try {
         // Token kontrolü
         const link = await ReviewLink.findOne({ token });
@@ -71,7 +69,7 @@ router.post("/submit-review", upload.single("image"), async (req, res) => {
             date,
             rating,
             comment,
-            imageUrl: image,
+            imageUrl: imageUrl || null,
             approved: false,
         });
 
