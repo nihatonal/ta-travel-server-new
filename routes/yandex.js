@@ -7,10 +7,10 @@ import path from "path";
 
 dotenv.config();
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
 
 const YANDEX_TOKEN = process.env.YANDEX_OAUTH_TOKEN;
-
+const storage = multer.memoryStorage(); // disk yerine memory
+const upload = multer({ storage });
 router.get('/images/:fileName', async (req, res) => {
     const { fileName } = req.params;
 
@@ -34,24 +34,23 @@ router.get('/images/:fileName', async (req, res) => {
         res.status(500).json({ message: 'Dosya alınamadı', error: err.message });
     }
 });
+
+
 router.post("/upload", upload.single("image"), async (req, res) => {
     if (!YANDEX_TOKEN) return res.status(500).json({ message: "Yandex token eksik." });
 
     const file = req.file;
     if (!file) return res.status(400).json({ message: "Dosya yüklenmedi." });
 
-    const filePath = file.path;
-
     try {
-        // 1️⃣ Yeni dosya adını oluştur
         const { name, location, date } = req.body;
         const sanitized = `${name}_${location}_${date}`
             .replace(/\s+/g, "_")
             .replace(/[^a-zA-Z0-9_-]/g, "")
             .toLowerCase();
-        const fileName = `${sanitized}${path.extname(file.originalname)}`;
+        const fileName = `${sanitized}${file.originalname.substring(file.originalname.lastIndexOf("."))}`;
 
-        // 2️⃣ Upload link al
+        // 1️⃣ Upload link al
         const linkRes = await fetch(
             `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(fileName)}&overwrite=true`,
             { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } }
@@ -59,21 +58,21 @@ router.post("/upload", upload.single("image"), async (req, res) => {
         const linkData = await linkRes.json();
         if (!linkData.href) return res.status(500).json({ message: "Upload link alınamadı", details: linkData });
 
-        // 3️⃣ Dosyayı Yandex’e yükle
+        // 2️⃣ Dosyayı Yandex’e yükle (buffer kullanıyoruz)
         const uploadRes = await fetch(linkData.href, {
             method: "PUT",
-            body: fs.createReadStream(filePath),
+            body: file.buffer, // fs yerine buffer
         });
         if (!uploadRes.ok) throw new Error("Dosya yükleme başarısız");
 
-        // 4️⃣ Dosyayı public hale getir
+        // 3️⃣ Dosyayı public hale getir
         const publishRes = await fetch(
             `https://cloud-api.yandex.net/v1/disk/resources/publish?path=${encodeURIComponent(fileName)}`,
             { method: "PUT", headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } }
         );
         if (!publishRes.ok) throw new Error("Dosya public yapılamadı");
 
-        // 5️⃣ Public metadata al
+        // 4️⃣ Public metadata al
         const metaRes = await fetch(
             `https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent(fileName)}`,
             { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } }
@@ -90,10 +89,6 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             directUrl = directData.href || null;
         }
 
-        // 6️⃣ Geçici dosyayı sil
-        fs.unlink(filePath, () => { });
-
-        // ✅ Frontend’e dön
         res.json({
             message: "Dosya başarıyla yüklendi!",
             fileName,
