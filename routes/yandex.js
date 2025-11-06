@@ -4,6 +4,7 @@ import fs from "fs";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
+import { transliterate as tr } from "transliteration";
 
 dotenv.config();
 const router = express.Router();
@@ -58,7 +59,9 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
     try {
         const { name, location, date } = req.body;
-        const sanitized = `${name}_${location}_${date}`
+        const rawName = `${name}_${location}_${date}`;
+        const transliterated = tr(rawName);
+        const sanitized = transliterated
             .replace(/\s+/g, "_")
             .replace(/[^a-zA-Z0-9_-]/g, "")
             .toLowerCase();
@@ -132,6 +135,48 @@ router.post("/upload", upload.single("image"), async (req, res) => {
         res.status(500).json({ message: "Yandex Disk upload sırasında hata oluştu", error: err.message });
     }
 });
+
+// 📁 Yandex'ten resim silme endpointi
+router.delete("/images/:fileName", async (req, res) => {
+    const { fileName } = req.params;
+    console.log(fileName)
+    if (!YANDEX_TOKEN) {
+        return res.status(500).json({ message: "Yandex token eksik." });
+    }
+
+    try {
+        const remotePath = `reviews/${fileName}`;
+
+        // 1️⃣ Yandex API ile silme isteği gönder
+        const deleteRes = await fetch(
+            `https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent(remotePath)}`,
+            {
+                method: "DELETE",
+                headers: {
+                    Authorization: `OAuth ${YANDEX_TOKEN}`,
+                },
+            }
+        );
+
+        // 202 = Silme isteği kabul edildi (async), 204 = başarıyla silindi
+        if (deleteRes.status === 204 || deleteRes.status === 202) {
+            return res.json({ message: "Dosya Yandex Disk'ten başarıyla silindi." });
+        }
+
+        // Hata durumu
+        const errorData = await deleteRes.json().catch(() => ({}));
+        console.error("Yandex silme hatası:", errorData);
+
+        res.status(deleteRes.status).json({
+            message: "Dosya silinemedi",
+            details: errorData,
+        });
+    } catch (err) {
+        console.error("Yandex delete hatası:", err);
+        res.status(500).json({ message: "Yandex Disk'ten dosya silme sırasında hata oluştu", error: err.message });
+    }
+});
+
 
 
 
