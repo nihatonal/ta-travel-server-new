@@ -10,6 +10,29 @@ const upload = multer({ dest: "uploads/" });
 
 const YANDEX_TOKEN = process.env.YANDEX_OAUTH_TOKEN;
 
+router.get('/images/:fileName', async (req, res) => {
+    const { fileName } = req.params;
+
+    try {
+        const apiUrl = `https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(fileName)}`;
+        const linkRes = await fetch(apiUrl, {
+            headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+        });
+
+        const linkData = await linkRes.json();
+        if (!linkData.href) return res.status(404).json({ message: 'Yandex download link alınamadı' });
+
+        // Yandex'ten dosyayı fetch et
+        const fileRes = await fetch(linkData.href);
+        const contentType = fileRes.headers.get('content-type');
+
+        res.setHeader('Content-Type', contentType);
+        fileRes.body.pipe(res);
+    } catch (err) {
+        console.error('Yandex proxy hatası:', err);
+        res.status(500).json({ message: 'Dosya alınamadı', error: err.message });
+    }
+});
 router.post("/upload", upload.single("image"), async (req, res) => {
     if (!YANDEX_TOKEN) return res.status(500).json({ message: "Yandex token eksik." });
     const file = req.file;
