@@ -2,6 +2,7 @@ import express from "express";
 import { google } from "googleapis";
 import "dotenv/config";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
+import { getDateRange } from "../utils/getDateRange.js";
 const router = express.Router();
 
 // 🔐 GA4 ayarları
@@ -21,10 +22,36 @@ const analyticsDataClient = new BetaAnalyticsDataClient({
 
 // 🧩 1️⃣ Overview (Ziyaretçi, Görüntülenme, Oturum Süresi, Bounce Rate)
 router.get("/overview", async (req, res) => {
+    const period = req.query.period || "monthly";
+
+    const currentRange = getDateRange(period);
+    let previousRange;
+
+    // önceki dönem karşılaştırması
+    switch (period) {
+        case "daily":
+            previousRange = { startDate: "2daysAgo", endDate: "2daysAgo" };
+            break;
+        case "weekly":
+            previousRange = { startDate: "14daysAgo", endDate: "8daysAgo" };
+            break;
+        case "monthly":
+            previousRange = { startDate: "60daysAgo", endDate: "31daysAgo" };
+            break;
+        case "6months":
+            previousRange = { startDate: "360daysAgo", endDate: "181daysAgo" };
+            break;
+        case "yearly":
+            previousRange = { startDate: "730daysAgo", endDate: "366daysAgo" };
+            break;
+        default:
+            previousRange = { startDate: "60daysAgo", endDate: "31daysAgo" };
+    }
+
     try {
-        const [response] = await analyticsDataClient.runReport({
+        const [currentData] = await analyticsDataClient.runReport({
             property: `properties/${PROPERTY_ID}`,
-            dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+            dateRanges: [currentRange],
             metrics: [
                 { name: "totalUsers" },
                 { name: "screenPageViews" },
@@ -33,12 +60,62 @@ router.get("/overview", async (req, res) => {
             ],
         });
 
-        const rows = response.rows[0].metricValues;
+        const [previousData] = await analyticsDataClient.runReport({
+            property: `properties/${PROPERTY_ID}`,
+            dateRanges: [previousRange],
+            metrics: [
+                { name: "totalUsers" },
+                { name: "screenPageViews" },
+                { name: "averageSessionDuration" },
+                { name: "bounceRate" },
+            ],
+        });
+
+        const safeValue = (rows, i) =>
+            rows && rows[0] && rows[0].metricValues[i]
+                ? parseFloat(rows[0].metricValues[i].value)
+                : 0;
+
+        const totalVisitorsCurrent = safeValue(currentData.rows, 0);
+        const totalVisitorsPrevious = safeValue(previousData.rows, 0);
+        const pageViewsCurrent = safeValue(currentData.rows, 1);
+        const pageViewsPrevious = safeValue(previousData.rows, 1);
+        const avgSessionCurrent = safeValue(currentData.rows, 2);
+        const avgSessionPrevious = safeValue(previousData.rows, 2);
+        const bounceRateCurrent = safeValue(currentData.rows, 3);
+        const bounceRatePrevious = safeValue(previousData.rows, 3);
+
+        const calcChange = (cur, prev) => {
+            if (!prev || prev === 0) return "0%";
+            return (((cur - prev) / prev) * 100).toFixed(1) + "%";
+        };
+
+        const allZero =
+            totalVisitorsCurrent === 0 &&
+            pageViewsCurrent === 0 &&
+            avgSessionCurrent === 0 &&
+            bounceRateCurrent === 0;
+
+        const warning = allZero ? "Данных нет за выбранный период" : null;
+
         res.json({
-            totalVisitors: Number(rows[0].value),
-            pageViews: Number(rows[1].value),
-            avgSessionDuration: parseFloat(rows[2].value).toFixed(2),
-            bounceRate: parseFloat(rows[3].value).toFixed(2),
+            totalVisitors: {
+                value: totalVisitorsCurrent,
+                change: calcChange(totalVisitorsCurrent, totalVisitorsPrevious),
+            },
+            pageViews: {
+                value: pageViewsCurrent,
+                change: calcChange(pageViewsCurrent, pageViewsPrevious),
+            },
+            avgSessionDuration: {
+                value: avgSessionCurrent.toFixed(2),
+                change: calcChange(avgSessionCurrent, avgSessionPrevious),
+            },
+            bounceRate: {
+                value: bounceRateCurrent.toFixed(2),
+                change: calcChange(bounceRateCurrent, bounceRatePrevious),
+            },
+            warning,
         });
     } catch (err) {
         console.error("Overview Error:", err);
@@ -47,12 +124,17 @@ router.get("/overview", async (req, res) => {
 });
 
 
+
+
 // 🧩 2️⃣ Device Distribution (Desktop, Mobile, Tablet)
 router.get("/devices", async (req, res) => {
+    const period = req.query.period || "monthly";
+    const range = getDateRange(period);
+
     try {
         const [response] = await analyticsDataClient.runReport({
             property: `properties/${PROPERTY_ID}`,
-            dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+            dateRanges: [range],
             dimensions: [{ name: "deviceCategory" }],
             metrics: [{ name: "totalUsers" }],
         });
@@ -72,10 +154,13 @@ router.get("/devices", async (req, res) => {
 
 // 🧩 3️⃣ Traffic Sources
 router.get("/sources", async (req, res) => {
+    const period = req.query.period || "monthly";
+    const range = getDateRange(period);
+
     try {
         const [response] = await analyticsDataClient.runReport({
             property: `properties/${PROPERTY_ID}`,
-            dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+            dateRanges: [range],
             dimensions: [{ name: "sessionSourceMedium" }],
             metrics: [{ name: "sessions" }],
             limit: 10,
@@ -93,28 +178,79 @@ router.get("/sources", async (req, res) => {
     }
 });
 
+// 🧩 Tek endpoint: Traffic Overview (devices + sources)
+router.get("/traffic-overview", async (req, res) => {
+    const period = req.query.period || "monthly";
+    const range = getDateRange(period);
+
+    try {
+        // ---- 1️⃣ Devices ----
+        const [devicesResponse] = await analyticsDataClient.runReport({
+            property: `properties/${PROPERTY_ID}`,
+            dateRanges: [range],
+            dimensions: [{ name: "deviceCategory" }],
+            metrics: [{ name: "totalUsers" }],
+        });
+
+        const devices = {};
+        if (devicesResponse.rows) {
+            devicesResponse.rows.forEach((row) => {
+                const key = row.dimensionValues[0].value.toLowerCase(); // desktop / mobile / tablet
+                devices[key] = Number(row.metricValues[0].value);
+            });
+        }
+
+        // ---- 2️⃣ Traffic Sources ----
+        const [sourcesResponse] = await analyticsDataClient.runReport({
+            property: `properties/${PROPERTY_ID}`,
+            dateRanges: [range],
+            dimensions: [{ name: "sessionSourceMedium" }],
+            metrics: [{ name: "sessions" }],
+            limit: 10,
+        });
+
+        const sources = sourcesResponse.rows
+            ? sourcesResponse.rows.map((row) => ({
+                source: row.dimensionValues[0].value,
+                sessions: Number(row.metricValues[0].value),
+            }))
+            : [];
+
+        // ---- 3️⃣ Combine Results ----
+        res.json({
+            devices, // { desktop: 120, mobile: 80, tablet: 30 }
+            sources, // [{ source: "google / organic", sessions: 1200 }, ...]
+            period,
+            range,
+        });
+    } catch (err) {
+        console.error("Traffic Overview Error:", err);
+        res.status(500).json({ error: "Failed to fetch traffic overview data" });
+    }
+});
 
 // 🧩 4️⃣ Top Pages
 router.get("/top-pages", async (req, res) => {
+    const period = req.query.period || "monthly";
+    const range = getDateRange(period);
+
     try {
         const [response] = await analyticsDataClient.runReport({
             property: `properties/${PROPERTY_ID}`,
-            dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+            dateRanges: [range],
             dimensions: [{ name: "pagePath" }],
             metrics: [{ name: "screenPageViews" }],
             orderBys: [{ desc: true, metric: { metricName: "screenPageViews" } }],
-            limit: 10, // filtre sonrası 5 gösterilecek
+            limit: 10,
         });
 
-        // Hassas sayfaları filtrele
         const pages = response.rows
             .map(row => ({
                 path: row.dimensionValues[0].value,
                 views: Number(row.metricValues[0].value),
             }))
-            .filter(page => !page.path.startsWith("/admin")); // admin sayfalarını gizle
+            .filter(page => !page.path.startsWith("/admin"));
 
-        // Sadece top 5’i döndür
         res.json(pages.slice(0, 5));
     } catch (err) {
         console.error("Top Pages Error:", err);
@@ -125,10 +261,13 @@ router.get("/top-pages", async (req, res) => {
 
 // 🧩 5️⃣ Session Duration by Day
 router.get("/session-duration", async (req, res) => {
+    const period = req.query.period || "weekly"; // varsayılan haftalık
+    const range = getDateRange(period);
+
     try {
         const [response] = await analyticsDataClient.runReport({
             property: `properties/${PROPERTY_ID}`,
-            dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
+            dateRanges: [range],
             dimensions: [{ name: "dayOfWeek" }],
             metrics: [{ name: "averageSessionDuration" }],
         });
@@ -145,7 +284,6 @@ router.get("/session-duration", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch session duration" });
     }
 });
-
 
 
 // 🧩 6️⃣ Conversions (Anonim Eventler)
