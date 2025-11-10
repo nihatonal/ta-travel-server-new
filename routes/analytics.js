@@ -361,4 +361,33 @@ router.get("/real-time", async (req, res) => {
     }
 });
 
+// 🧩 8️⃣ Top Cities (Kullanıcıların Şehirlere Göre Dağılımı)
+router.get("/cities", async (req, res) => {
+    const period = req.query.period || "monthly";
+    const range = getDateRange(period);
+
+    try {
+        const [response] = await analyticsDataClient.runReport({
+            property: `properties/${PROPERTY_ID}`,
+            dateRanges: [range],
+            dimensions: [{ name: "city" }],
+            metrics: [{ name: "totalUsers" }],
+            orderBys: [{ desc: true, metric: { metricName: "totalUsers" } }],
+            limit: 10,
+        });
+
+        const cities = response.rows
+            ?.filter(row => row.dimensionValues[0].value && row.dimensionValues[0].value !== "(not set)")
+            .map(row => ({
+                city: row.dimensionValues[0].value,
+                users: Number(row.metricValues[0].value),
+            })) || [];
+
+        res.json(cities);
+    } catch (err) {
+        console.error("Cities Error:", err);
+        res.status(500).json({ error: "Failed to fetch city data" });
+    }
+});
+
 export default router;
