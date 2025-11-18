@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
           <div style="font-family: Arial, sans-serif; background-color: #f6f8fa; padding: 30px;">
             <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
               <div style="background-color: #004AAD; padding: 20px; text-align: center;">
-                <img src="https://ta-travel.ru/logo.png" alt="TA Travel" style="width: 140px; height: auto;" />
+                <img src="https://www.ta-travel.ru/logo.png" alt="TA Travel" style="width: 140px; height: auto;" />
               </div>
               <div style="padding: 30px;">
                 <h2 style="color: #004AAD; margin-bottom: 10px;">Спасибо, что с нами!</h2>
